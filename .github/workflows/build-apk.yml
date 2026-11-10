@@ -65,17 +65,39 @@ jobs:
           cd android
           gradle assembleRelease --stacktrace
 
-      - name: Locate and Prepare APK
+      - name: Locate, Align, and Sign APK
         id: prepare_apk
         run: |
-          APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
-          if [ -z "$APK_PATH" ]; then
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
+          echo "Using Android Build Tools: $BUILD_TOOLS_DIR"
+
+          RAW_APK=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
+          if [ -z "$RAW_APK" ]; then
             echo "ERROR: APK not found! Listing outputs:"
             find android/app/build -maxdepth 5 || true
             exit 1
           fi
-          echo "Found APK at: $APK_PATH"
-          cp "$APK_PATH" memos-release.apk
+          echo "Found compiled APK at: $RAW_APK"
+
+          # Align APK
+          $BUILD_TOOLS_DIR/zipalign -v -p 4 "$RAW_APK" aligned.apk || cp "$RAW_APK" aligned.apk
+
+          # Sign APK with full v1, v2, and v3 signature schemes
+          $BUILD_TOOLS_DIR/apksigner sign \
+            --ks android/app/release.keystore \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --ks-key-alias androiddebugkey \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out memos-release.apk \
+            aligned.apk
+
+          # Verify signature
+          echo "=== APK SIGNATURE VERIFICATION ==="
+          $BUILD_TOOLS_DIR/apksigner verify --verbose memos-release.apk
+
           ls -lh memos-release.apk
 
       - name: Upload APK to Workflow Artifacts
@@ -112,11 +134,10 @@ jobs:
             #### 📥 Download:
             Download file **`memos-release.apk`** di bawah ini dan pasang di HP Android kamu.
             
-            #### ✨ Fitur:
-            - Terhubung langsung ke instance/server Memos kamu
-            - Dukungan unggah file / foto langsung dari memori HP
-            - Tarik ke bawah untuk refresh (Pull-to-refresh)
-            - Konfigurasi alamat URL server yang mudah
+            #### ✨ Kompatibilitas:
+            - **Arsitektur**: Mendukung universal (ARM64 64-bit, ARM 32-bit, x86, x86_64)
+            - **Android Versi**: Android 5.0 (Lollipop) sampai Android 15+
+            - **Tanda Tangan**: Lengkap dengan skema APK Signature v1 (JAR), v2, dan v3
           draft: false
           prerelease: false
           files: memos-release.apk
