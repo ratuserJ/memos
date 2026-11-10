@@ -34,8 +34,14 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Configure Android SDK
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          mkdir -p ~/.android
+          touch ~/.android/repositories.cfg
+          if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          fi
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -62,9 +68,10 @@ jobs:
       - name: Locate and Prepare APK
         id: prepare_apk
         run: |
-          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
           if [ -z "$APK_PATH" ]; then
-            echo "ERROR: APK not found!"
+            echo "ERROR: APK not found! Listing outputs:"
+            find android/app/build -maxdepth 5 || true
             exit 1
           fi
           echo "Found APK at: $APK_PATH"
@@ -95,6 +102,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.get_tag.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
           name: "Memos Android APK ${{ steps.get_tag.outputs.tag_name }}"
           body: |
             ### 📱 Memos Android Client (${{ steps.get_tag.outputs.tag_name }})
